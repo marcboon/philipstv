@@ -15,39 +15,35 @@ from philipstv.titan import Titan
 # Set flag if running in Juno on iPhone, to use dialogs for interactive input
 try:
 	import juno.dialogs
-	iPHONE = True
+	iPhone = True
 except ImportError:
-	iPHONE = False
+	iPhone = False
 
 # Pre-paired user for testing
 USER = "300078d2-c11d-4b36-ae20-43554e0189c0"
 
 
 def alert(title):
-	try:
-		from juno import dialogs
+	if iPhone:
 		return dialogs.alert(title)
-
-	except ImportError:
+	else:
 		return print(title)
 
 def prompt(title):
-	try:
-		from juno import dialogs
+	if iPhone:
 		return dialogs.input_alert(title)
-
-	except ImportError:
+	else:
 		return input(title)
 
 def pair():
+	# Discover TVs and use first
+	ip = None
 	tvs = Titan.discover()
 	if tvs:
 		ip = tvs[0]['ip']
-		if ip is None:
-			alert("No TV found")
-			sys.exit()
 
-	else:
+	# None found
+	if ip is None:
 		alert("No TV found")
 		sys.exit()
 
