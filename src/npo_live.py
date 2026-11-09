@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Pass TV's IP address on commandline
-
+- If not paired already, find TV on local network and pair it
 - Connect with the TV's Titan OS control channel (MQTT :8883)
 - Launch the NPO Start app
 - Navigate to 'Overslaan'
@@ -10,24 +9,58 @@ Pass TV's IP address on commandline
 - Navigate to 'Live'
 - Confirm
 """
-
 import time, sys
-from juno import dialogs
 from philipstv.titan import Titan
 
+# Set flag if running in Juno on iPhone, to use dialogs for interactive input
+try:
+	import juno.dialogs
+	iPHONE = True
+except ImportError:
+	iPHONE = False
+
+# Pre-paired user for testing
+USER = "300078d2-c11d-4b36-ae20-43554e0189c0"
+
+
+def alert(title):
+	try:
+		from juno import dialogs
+		return dialogs.alert(title)
+
+	except ImportError:
+		return print(title)
+
+def prompt(title):
+	try:
+		from juno import dialogs
+		return dialogs.input_alert(title)
+
+	except ImportError:
+		return input(title)
 
 def pair():
-	ip = dialogs.input_alert("IP address of TV").strip()
+	tvs = Titan.discover()
+	if tvs:
+		ip = tvs[0]['ip']
+		if ip is None:
+			alert("No TV found")
+			sys.exit()
+
+	else:
+		alert("No TV found")
+		sys.exit()
+
 	t = Titan(ip).connect()
 	t.pair_start()
-	pin = dialogs.input_alert("PIN shown on TV").strip()
-	t.pair_finish(pin)
+	pin = prompt("PIN shown on TV: ").strip()
+	t.pair_finish(pin, USER)
 	return t
 
 
 def main():
 	# try to connect, pair first if needed
-	t = Titan.load() or pair()
+	t = Titan.load(False) or pair()
 	t.connect()
 	# launch NPO Start app
 	app = next(a for a in t.installed_apps() if a["code"] == "npo_start")
