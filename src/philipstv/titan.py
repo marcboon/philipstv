@@ -127,10 +127,10 @@ class Titan:
 
 			root = ET.fromstring(response.content)
 			# Define the exact namespace dictionary matching the xmlns attribute
-			ns = {'dial': 'urn:dial-multiscreen-org:schemas:dial'}
+			ns = {'d': 'urn:dial-multiscreen-org:schemas:dial'}
 			# Use the namespace prefix 'd:' for every nested tag path
-			model_el = root.find('.//dial:additionalData/dial:model', ns)
-			brand_el = root.find('.//dial:additionalData/dial:brand', ns)
+			model_el = root.find('.//d:additionalData/d:model', ns)
+			brand_el = root.find('.//d:additionalData/d:brand', ns)
 			brand = brand_el.text if brand_el is not None else "Unknown"
 			model = model_el.text if model_el is not None else "Unknown"
 			
