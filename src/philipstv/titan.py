@@ -35,7 +35,6 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Optional
 import concurrent.futures
 import paho.mqtt.client as mqtt
 from paho.mqtt.packettypes import PacketTypes
@@ -65,13 +64,13 @@ class TitanError(Exception):
 
 
 class Titan:
-	def __init__(self, host: str, username: Optional[str] = None, password: Optional[str] = None):
+	def __init__(self, host: str, username: str|None = None, password: str|None = None):
 		self.host = host
 		self.username = username
 		self.password = password
 		self._waiters: dict = {}
 		self._connected = threading.Event()
-		self._challenge: Optional[str] = None
+		self._challenge: str|None = None
 		cid = "eos-" + (username or uuid.uuid4().hex)
 		self.c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=cid, protocol=mqtt.MQTTv5)
 		ctx = ssl.create_default_context(cafile=str(CA_FILE))
@@ -99,7 +98,7 @@ class Titan:
 			return "192.168.1."  # Fallback
 
 	@classmethod
-	def isTitanTV(cls, target_ip: str):
+	def isPresent(cls, target_ip: str):
 		# Ports known to be open on Philips/TitanOS TVs
 		# 1925: JointSpace HTTP, 8883: TitanOS Secure MQTT
 		for port in [1925, 8883]:
@@ -115,49 +114,49 @@ class Titan:
 	@classmethod
 	def fetch_tv_info_via_youtube(cls, tv_ip: str) -> dict:
 		"""
-		Queries the open YouTube DIAL endpoint to extract the
-		TV brand and model out of the <additionalData> tag.
+		Queries the open YouTube DIAL xml endpoint to extract 
+		the TV brand and model out of the <additionalData> tag.
 		"""
 		youtube_url = f"http://{tv_ip}:56789/apps/YouTube"
-		try:
-			# Standard GET request with no special headers needed
-			response = requests.get(youtube_url, timeout=1.5)
-			if response.status_code != 200:
-				raise Exception(f"HTTP Error {response.status_code}")
+		response = requests.get(youtube_url, timeout=1.5)
+		response.raise_for_status()
 
-			root = ET.fromstring(response.content)
-			# Define the exact namespace dictionary matching the xmlns attribute
-			ns = {'d': 'urn:dial-multiscreen-org:schemas:dial'}
-			# Use the namespace prefix 'd:' for every nested tag path
-			model_el = root.find('.//d:additionalData/d:model', ns)
-			brand_el = root.find('.//d:additionalData/d:brand', ns)
-			brand = brand_el.text if brand_el is not None else "Unknown"
-			model = model_el.text if model_el is not None else "Unknown"
-			
-			return { 'ip': tv_ip, 'brand': brand, 'model': model }
-
-		except Exception as e:
-			print(f"Error: {e}")
+		# Parse the xml response
+		root = ET.fromstring(response.content)
+		# Define the exact namespace dictionary matching the xmlns attribute
+		ns = {'d': 'urn:dial-multiscreen-org:schemas:dial'}
+		# Use the namespace prefix 'd:' for every nested tag path
+		model_el = root.find('.//d:additionalData/d:model', ns)
+		brand_el = root.find('.//d:additionalData/d:brand', ns)
+		brand = brand_el.text if brand_el is not None else "Unknown"
+		model = model_el.text if model_el is not None else "Unknown"
+		
+		return { 'ip': tv_ip, 'brand': brand, 'model': model }
 
 	@classmethod
-	def discover(cls) -> list:
+	def discover(cls, limit: int = 0) -> list:
 		base_ip = cls.get_local_base_ip()
 		discovered_tvs = []
 		# Use 60 concurrent worker threads to execute the sweep instantly
 		with concurrent.futures.ThreadPoolExecutor(max_workers=60) as executor:
 			# Pass both the IP suffix and the base_ip context using a lambda or bound logic
-			futures = [executor.submit(cls.isTitanTV, f"{base_ip}{i}") for i in range(1, 255)]
+			futures = [executor.submit(cls.isPresent, f"{base_ip}{i}") for i in range(1, 255)]
 			for future in concurrent.futures.as_completed(futures):
 				tv_ip = future.result()
 				if tv_ip and tv_ip not in discovered_tvs:
 					tv_info = cls.fetch_tv_info_via_youtube(tv_ip)
 					discovered_tvs.append(tv_info)
+					if limit > 0 and (limit := limit - 1) == 0:
+						# Cancel all remaining tasks and quit
+						for f in futures:
+							f.cancel()
+						break
 		return discovered_tvs
 
 	# ------------------------------------------------------------------ creds
 	@classmethod
-	def load(cls, loadCredentials: bool = True) -> Optional["Titan"]:
-		if loadCredentials and CRED_FILE.exists():
+	def load(cls) -> Titan|None:
+		if CRED_FILE.exists():
 			d = json.loads(CRED_FILE.read_text())
 			return cls(d["host"], d["username"], d["password"])
 		return None
@@ -169,7 +168,7 @@ class Titan:
 		CRED_FILE.chmod(0o600)
 
 	# -------------------------------------------------------------- transport
-	def connect(self) -> "Titan":
+	def connect(self) -> Titan:
 		self.c.connect(self.host, 8883, keepalive=30)
 		self.c.loop_start()
 		if not self._connected.wait(8):
@@ -180,13 +179,13 @@ class Titan:
 		self.c.loop_stop()
 		self.c.disconnect()
 
-	def _on_message(self, c, u, m):
+	def _on_message(self, c, u, m) -> None:
 		w = self._waiters.get(m.topic)
 		if w:
 			w[1].append(m.payload.decode(errors="replace"))
 			w[0].set()
 
-	def request(self, topic: str, payload: Optional[dict], timeout: float = 6) -> dict:
+	def request(self, topic: str, payload: dict|None = None, timeout: float = 6) -> dict:
 		rt = f"{topic}/{uuid.uuid4()}"
 		ev = threading.Event()
 		self._waiters[rt] = (ev, [])
@@ -210,15 +209,17 @@ class Titan:
 	def pair_start(self) -> None:
 		"""Step 1 (anonymous connection): the TV shows a 4-digit PIN."""
 		r = self.request("pairing/start", {"type": "mobile"})
+		print(r)
 		if "data" not in r:
 			raise TitanError(f"pairing/start failed: {r}")
 		self._challenge = r["data"]["challenge"]
 
-	def pair_finish(self, pin: str, user: Optional[str]) -> None:
+	def pair_finish(self, pin: str) -> None:
 		"""Step 2: answer the challenge with the PIN; saves credentials."""
-		username = user or str(uuid.uuid4())
+		username = str(uuid.uuid4())
 		result = hmac.new(pin.encode(), self._challenge.encode(), hashlib.sha256).hexdigest()
 		r = self.request("pairing/finish", {"username": username, "challenge_result": result})
+		print(r)
 		if "data" not in r:
 			raise TitanError(f"pairing/finish failed: {r}")
 		self.username = r["data"].get("username", username)
