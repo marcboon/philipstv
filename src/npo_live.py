@@ -19,45 +19,43 @@ try:
 except ImportError:
 	iPhone = False
 
-# Pre-paired user for testing
-USER = "300078d2-c11d-4b36-ae20-43554e0189c0"
 
-
-def alert(title):
+def alert(title) -> str|None:
 	if iPhone:
 		return dialogs.alert(title)
 	else:
 		return print(title)
 
-def prompt(title):
+def prompt(title) -> str|None:
 	if iPhone:
 		return dialogs.input_alert(title)
 	else:
 		return input(title)
 
-def pair():
-	# Discover TVs and use first
-	ip = None
-	tvs = Titan.discover()
+def discover_and_pair() -> Titan:
+	# Discover TV and if found, pair it
+	tvs = Titan.discover(1)
 	if tvs:
 		ip = tvs[0]['ip']
-
-	# None found
-	if ip is None:
+		alert(f"Found {tvs[0]['brand']} {tvs[0]['model']} at {ip}")
+	else:
 		alert("No TV found")
 		sys.exit()
 
 	t = Titan(ip).connect()
 	t.pair_start()
 	pin = prompt("PIN shown on TV: ").strip()
-	t.pair_finish(pin, USER)
+	t.pair_finish(pin)
 	return t
 
 
 def main():
 	# try to connect, pair first if needed
-	t = Titan.load(False) or pair()
-	t.connect()
+	t = Titan.load()
+	if t:
+		t.connect()
+	else:
+		t = discover_and_pair()
 	# launch NPO Start app
 	app = next(a for a in t.installed_apps() if a["code"] == "npo_start")
 	t.launch(app["code"], app["url"])
