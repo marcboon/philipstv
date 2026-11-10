@@ -9,7 +9,7 @@ tvs = Titan.discover()
 if tvs:
 	for tv in tvs:
 		# Show info
-		print(f"TV found at {tv['ip']}: {tv['brand']} {tv['model']}")
+		print(f"{tv['brand']} {tv['model']} at {tv['ip']}")
 else:
 	print("No TVs found")
 	
