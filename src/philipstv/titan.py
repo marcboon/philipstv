@@ -88,11 +88,11 @@ class Titan:
 			# Create a dummy socket connection to detect local interface IP
 			s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 			s.connect(("8.8.8.8", 80))
-			local_ip = s.getsockname()[0]
+			ip = s.getsockname()[0]
 			s.close()
-			print(f"Local IP: {local_ip}")
+			print(f"My IP: {ip}")
 			# Returns something like "192.168.1."
-			return ".".join(local_ip.split(".")[:3]) + "."
+			return ip[: ip.rfind(".") + 1]
 		except Exception:
 			print("Could not determine local IP. Using 192.168.1.1/24")
 			return "192.168.1."  # Fallback
