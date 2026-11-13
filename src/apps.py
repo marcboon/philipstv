@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
-
+import sys
 from philipstv.titan import Titan
+
+tv = Titan.discover(1)
+if not tv:
+	print('TV not found')
+	sys.exit()
+
+print(f"{tv[0][brand]} {tv[0][model]}")	
 
 t = Titan.load().connect()
 apps = t.installed_apps()
