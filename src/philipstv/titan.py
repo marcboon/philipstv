@@ -82,8 +82,8 @@ class Titan:
 		self.c.on_message = self._on_message
 
 	# -------------------------------------------------------------- discovery
-	@classmethod
-	def get_local_base_ip(cls):
+	@staticmethod
+	def get_local_base_ip():
 		try:
 			# Create a dummy socket connection to detect local interface IP
 			s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -97,8 +97,8 @@ class Titan:
 			print("Could not determine local IP. Using 192.168.1.1/24")
 			return "192.168.1."  # Fallback
 
-	@classmethod
-	def isPresent(cls, target_ip: str):
+	@staticmethod
+	def isPresent(target_ip: str):
 		# Ports known to be open on Philips/TitanOS TVs
 		# 1925: JointSpace HTTP, 8883: TitanOS Secure MQTT
 		for port in [1925, 8883]:
@@ -111,8 +111,8 @@ class Titan:
 				return target_ip
 		return False
 
-	@classmethod
-	def fetch_tv_info_via_youtube(cls, tv_ip: str) -> dict:
+	@staticmethod
+	def fetch_tv_info_via_youtube(tv_ip: str) -> dict:
 		"""
 		Queries the open YouTube DIAL xml endpoint to extract 
 		the TV brand and model out of the <additionalData> tag.
